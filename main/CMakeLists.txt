@@ -6,5 +6,8 @@ idf_component_register(
 	PRIV_REQUIRES
 		esp_driver_uart
         badge-bsp
-        pax-graphics
+        pax-gfx
+        pax-codecs
+    EMBED_FILES
+        "wallpaper.png"
 )

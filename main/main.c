@@ -23,6 +23,8 @@
 #include "pax_fonts.h"
 #include "pax_gfx.h"
 #include "pax_text.h"
+#include "pax_codecs.h"
+#include "bsp/led.h"
 
 #define RADIO_BUFFER 256
 #define RADIO_UART   UART_NUM_1
@@ -30,6 +32,9 @@
 #define RADIO_RX     18  // UART RX coming from ESP32-C6
 
 static const char* TAG = "Terminal";
+
+extern uint8_t const wallpaper_start[] asm("_binary_wallpaper_png_start");
+extern uint8_t const wallpaper_end[] asm("_binary_wallpaper_png_end");
 
 static esp_lcd_panel_handle_t    lcd_panel         = NULL;
 static esp_lcd_panel_io_handle_t lcd_panel_io      = NULL;
@@ -43,6 +48,7 @@ static pax_buf_t fb = {0};
 char line_buffers[num_lines][num_chars];
 int  line_index[num_lines];
 char input_buffer[num_chars];
+uint8_t led_buffer[6 * 3] = {0};
 
 void init(void) {
     for (size_t i = 0; i < num_lines; i++) {
@@ -51,6 +57,11 @@ void init(void) {
 }
 
 void add_line(char* text) {
+    for (size_t i = 0; i < strlen(text); i++) {
+        if (text[i] == '\r' || text[i] == '\n') {
+            text[i] = ' ';
+        }
+    }
     for (size_t i = 0; i < num_lines; i++) {
         line_index[i] = (line_index[i] + 1) % num_lines;
     }
@@ -74,17 +85,41 @@ void blit(int h_res, int v_res) {
     esp_lcd_panel_draw_bitmap(lcd_panel, 0, 0, h_res, v_res, pax_buf_get_pixels(&fb));
 }
 
+void set_led_color(uint8_t led, uint32_t color) {
+    led_buffer[led * 3 + 0] = (color >> 8) & 0xFF;  // G
+    led_buffer[led * 3 + 1] = (color >> 16) & 0xFF; // R
+    led_buffer[led * 3 + 2] = (color >> 0) & 0xFF;  // B
+}
+
+void wallpaper(int h_res, int v_res) {
+    pax_insert_png_buf(&fb, wallpaper_start, wallpaper_end - wallpaper_start, 0, 0, 0);
+    esp_lcd_panel_draw_bitmap(lcd_panel, 0, 0, h_res, v_res, pax_buf_get_pixels(&fb));
+    set_led_color(0, 0xFC0303);
+    set_led_color(1, 0xFC6F03);
+    set_led_color(2, 0xF4FC03);
+    set_led_color(3, 0xFC03E3);
+    set_led_color(4, 0x0303FC);
+    set_led_color(5, 0x03FC03);
+    bsp_led_write(led_buffer, sizeof(led_buffer));
+}
+
 void app_main(void) {
     gpio_install_isr_service(0);
     ESP_ERROR_CHECK(bsp_device_initialize());
     ESP_LOGI(TAG, "Starting app...");
 
+    bsp_led_initialize();
+    bsp_led_write(led_buffer, sizeof(led_buffer));
+
+
     ESP_LOGW(TAG, "Switching radio off...\r\n");
     bsp_power_set_radio_state(BSP_POWER_RADIO_STATE_OFF);
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(100));
     ESP_LOGW(TAG, "Switching radio to application mode...\r\n");
     bsp_power_set_radio_state(BSP_POWER_RADIO_STATE_APPLICATION);
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    bsp_input_set_backlight_brightness(100);
 
     ESP_ERROR_CHECK(uart_driver_install(RADIO_UART, RADIO_BUFFER, RADIO_BUFFER, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(RADIO_UART, RADIO_TX, RADIO_RX, -1, -1));
@@ -131,6 +166,8 @@ void app_main(void) {
                             if (length > 0) {
                                 input_buffer[length - 1] = '\0';
                             }
+                        } else if (ascii == '\r' || ascii == '\n') {
+                            // Ignore
                         } else {
                             size_t length = strlen(input_buffer);
                             if (length < num_chars - 1) {
@@ -156,6 +193,9 @@ void app_main(void) {
                                 memset(input_buffer, 0, num_chars);
                             }
                             blit(h_res, v_res);
+                            if (event.args_navigation.key == BSP_INPUT_NAVIGATION_KEY_F1) {
+                                wallpaper(h_res, v_res);
+                            }
                         }
                         break;
                     }

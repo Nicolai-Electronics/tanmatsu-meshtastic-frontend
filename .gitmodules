@@ -2,5 +2,8 @@
 	path = components/badge-bsp
 	url = git@github.com:Nicolai-Electronics/esp32-component-badge-bsp.git
 [submodule "components/pax-graphics"]
-	path = components/pax-graphics
+	path = components/pax-gfx
 	url = git@github.com:robotman2412/pax-graphics.git
+[submodule "components/pax-codecs"]
+	path = components/pax-codecs
+	url = git@github.com:robotman2412/pax-codecs.git
